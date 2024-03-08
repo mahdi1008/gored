@@ -77,6 +77,12 @@ func ExtractBulkString(s string) (*BulkString, string, error) {
 		return nil, s, invalidTypeError("extractBulkString", s)
 	}
 	splited := strings.SplitN(s, CRLF, 3)
+	if len(splited) == 2 {
+		if splited[0] != "$-1" || splited[1] != "" {
+			return nil, s, invalidInputPartsError("decodeBulkString", s)
+		}
+		return &BulkString{}, splited[1], nil
+	}
 	if len(splited) != 3 {
 		return nil, s, invalidInputPartsError("extractBulkString", s)
 	}
@@ -86,7 +92,7 @@ func ExtractBulkString(s string) (*BulkString, string, error) {
 		return nil, s, invalidInputDataError("extractBulkString", s)
 	}
 	if internalBulkStringSize == -1 {
-		return &BulkString{S: nil}, splited[2], nil
+		return &BulkString{S: nil}, splited[1] + CRLF + splited[2], nil
 	}
 
 	internalString := splited[1]

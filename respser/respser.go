@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 )
 
 const CRLF = "\r\n"
@@ -15,6 +14,7 @@ var (
 	ErrDataMismatch      = errors.New("data mismatch")
 	ErrInvalidInputParts = errors.New("invalid input parts")
 	ErrFailedExtraction  = errors.New("failed extraction")
+	ErrDecode            = errors.New("decode error")
 )
 
 type RespSerError struct {
@@ -47,6 +47,10 @@ func invalidInputPartsError(fn string, in string) *RespSerError {
 
 func failedExtractionError(fn string, in string) *RespSerError {
 	return &RespSerError{fn, in, ErrFailedExtraction}
+}
+
+func decodeError(fn string, in string) *RespSerError {
+	return &RespSerError{fn, in, ErrDecode}
 }
 
 type RespEncoder interface {
@@ -117,96 +121,3 @@ func (a *Array) GetElements() []RespEncoder {
 	}
 	return *a.Elements
 }
-
-func RespDecode(s string) (RespEncoder, error) {
-	switch {
-	case strings.HasPrefix(s, "+"):
-		return decodeSimpleString(s)
-	case strings.HasPrefix(s, "-"):
-		return decodeErrorString(s)
-	case strings.HasPrefix(s, ":"):
-		return decodeInteger(s)
-	case strings.HasPrefix(s, "$"):
-		return decodeBulkString(s)
-	case strings.HasPrefix(s, "*"):
-		return decodeArray(s)
-	default:
-		return nil, fmt.Errorf("invalid data type: unexpected prefix")
-	}
-}
-
-func decodeSimpleString(s string) (*SimpleString, error) {
-	s = strings.TrimPrefix(s, "+")
-	splited := strings.Split(s, "\r\n")
-	if len(splited) != 2 {
-		return nil, fmt.Errorf("invalid SimpleString response: unexpected number of parts")
-	}
-	if splited[1] != "" {
-		return nil, fmt.Errorf("invalid SimpleString response: unexpected string after split")
-	}
-	return &SimpleString{S: splited[0]}, nil
-}
-
-func decodeErrorString(s string) (*ErrorString, error) {
-	s = strings.TrimPrefix(s, "-")
-	splited := strings.Split(s, "\r\n")
-	if len(splited) != 2 {
-		return nil, fmt.Errorf("invalid ErrorString response: unexpected number of parts")
-	}
-	if splited[1] != "" {
-		return nil, fmt.Errorf("invalid ErrorString response: unexpected string after split")
-	}
-	return &ErrorString{E: splited[0]}, nil
-}
-
-func decodeInteger(s string) (*Integer, error) {
-	s = strings.TrimPrefix(s, ":")
-	splited := strings.Split(s, "\r\n")
-	if len(splited) != 2 {
-		return nil, fmt.Errorf("invalid Integer response: unexpected number of parts")
-	}
-	if splited[1] != "" {
-		return nil, fmt.Errorf("invalid Integer response: unexpected string after split")
-	}
-	n, err := strconv.Atoi(splited[0])
-	if err != nil {
-		return nil, fmt.Errorf("invalid Integer response: error converting string to integer: %w", err)
-	}
-	return &Integer{N: n}, nil
-}
-
-func decodeBulkString(s string) (*BulkString, error) {
-	s = strings.TrimPrefix(s, "$")
-	splited := strings.Split(s, "\r\n")
-	if len(splited) == 2 {
-		if splited[0] != "-1" || splited[1] != "" {
-			return nil, fmt.Errorf("invalid null BulkString response: unexpected number of parts")
-		}
-		return &BulkString{}, nil
-	}
-	if len(splited) != 3 {
-		return nil, fmt.Errorf("invalid BulkString response: unexpected number of parts")
-	}
-	l, err := strconv.Atoi(splited[0])
-	if err != nil {
-		return nil, fmt.Errorf("invalid BulkString response: error converting string to integer: %w", err)
-	}
-	if l != len(splited[1]) {
-		return nil, fmt.Errorf("invalid BulkString response: mismatch of len of string: %d != %d", l, len(splited[1]))
-	}
-	return &BulkString{S: &splited[1]}, nil
-}
-
-func decodeArray(s string) (*Array, error) {
-	s = strings.TrimPrefix(s, "*")
-	splited := strings.Split(s, "\r\n")
-	l, err := strconv.Atoi(splited[0])
-	if err != nil {
-		return nil, fmt.Errorf("invalid Array response: error converting string to integer: %w", err)
-	}
-	if l == -1 {
-		return &Array{}, nil
-	}
-	return nil, fmt.Errorf("err")
-}
-
