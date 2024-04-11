@@ -55,6 +55,7 @@ func decodeError(fn string, in string) *RespSerError {
 
 type RespEncoder interface {
 	RespEncode() string
+	ToString() string
 }
 
 type SimpleString struct {
@@ -62,7 +63,11 @@ type SimpleString struct {
 }
 
 func (ss *SimpleString) RespEncode() string {
-	return fmt.Sprintf("+%s\r\n", ss.S)
+	return fmt.Sprintf("+%s%s", ss.S, CRLF)
+}
+
+func (ss *SimpleString) ToString() string {
+	return fmt.Sprintf("SimpleString: %s", ss.S)
 }
 
 type ErrorString struct {
@@ -71,6 +76,10 @@ type ErrorString struct {
 
 func (es *ErrorString) RespEncode() string {
 	return fmt.Sprintf("-%s\r\n", es.E)
+}
+
+func (es *ErrorString) ToString() string {
+	return fmt.Sprintf("ErrorString: %s", es.E)
 }
 
 type Integer struct {
@@ -82,6 +91,10 @@ func (i *Integer) RespEncode() string {
 	return fmt.Sprintf(":%s\r\n", nStr)
 }
 
+func (i *Integer) ToString() string {
+	return fmt.Sprintf("Integer: %d", i.N)
+}
+
 type BulkString struct {
 	S *string
 }
@@ -91,6 +104,16 @@ func (bs *BulkString) RespEncode() string {
 		return "$-1\r\n"
 	}
 	return fmt.Sprintf("$%d\r\n%s\r\n", len(*bs.S), *bs.S)
+}
+
+func (bs *BulkString) ToString() string {
+	var s string
+	if bs.S == nil {
+		s = "nil"
+	} else {
+		s = *bs.S
+	}
+	return fmt.Sprintf("BulkString: %s", s)
 }
 
 type Array struct {
@@ -106,6 +129,14 @@ func (a *Array) RespEncode() string {
 		res = res + e.RespEncode()
 	}
 	return res
+}
+
+func (a *Array) ToString() string {
+	s := "Array: "
+	for _, e := range *a.Elements {
+		s = s + e.ToString()
+	}
+	return s
 }
 
 func (a *Array) AddElement(element RespEncoder) {

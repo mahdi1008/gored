@@ -2,8 +2,9 @@ package main
 
 import (
 	"fmt"
-	"gored/respser"
 	"net"
+
+	"gored/respser"
 )
 
 func main() {
@@ -26,74 +27,98 @@ func main() {
 }
 
 func handleRequest(conn net.Conn) {
-	defer conn.Close()
+	buffer := make([]byte, 4096)
+	length, err := conn.Read(buffer)
+	if err != nil {
+		fmt.Println("Error reading:", err.Error())
+	}
+	in := string(buffer[:length])
+	fmt.Printf("input is:\n%s\n", in)
 
-	fmt.Println("handling response")
-	for {
-		buffer := make([]byte, 4096)
-		length, err := conn.Read(buffer)
-		if err != nil {
-			fmt.Println("Error reading:", err.Error())
-			return
-		}
-		in := string(buffer[:length])
+	re, err := respser.RespDecode(in)
 
-		re, err := respser.RespDecode(in)
-		response := ""
-		if err != nil {
-			fmt.Println("Error decoding:", err)
-		} else {
-			switch v := re.(type) {
+	if err != nil {
+		fmt.Println("Error decoding:", err)
+	}
+
+	fmt.Println(re.ToString())
+
+	args := []respser.RespEncoder{}
+	if arr, ok := re.(*respser.Array); ok {
+		for _, e := range *arr.Elements {
+			switch v2 := e.(type) {
 			case *respser.SimpleString:
-				fmt.Println("SimpleString:", v)
+				args = append(args, v2)
+				fmt.Println("SimpleString:", *v2)
 			case *respser.ErrorString:
-				fmt.Println("ErrorString:", v)
+				args = append(args, v2)
+				fmt.Println("ErrorString:", *v2)
 			case *respser.Integer:
-				fmt.Println("Integer:", v)
+				args = append(args, v2)
+				fmt.Println("Integer:", *v2)
 			case *respser.BulkString:
-				fmt.Println("BulkString:", v)
+				args = append(args, v2)
 			case *respser.Array:
-				a := re.(*respser.Array)
-				for _, e := range *a.Elements {
-					switch v2 := e.(type) {
-					case *respser.SimpleString:
-						fmt.Println("SimpleString:", *v2)
-					case *respser.ErrorString:
-						fmt.Println("ErrorString:", *v2)
-					case *respser.Integer:
-						fmt.Println("Integer:", *v2)
-					case *respser.BulkString:
-						fmt.Println("BulkString:", *v2.S)
-						response = handleCommand(*v2.S)
-					case *respser.Array:
-						fmt.Println("BulkString:", *v2)
-					default:
-						fmt.Println("Unknown type internal")
-					}
-					fmt.Println("Array:", v)
-				}
+				fmt.Println("BulkString:", *v2)
 			default:
-				fmt.Println("Unknown type")
+				fmt.Println("Unknown type internal")
 			}
 		}
+	}
 
-		if response == "" {
-			response = "+OK\r\n"
-		}
-		_, err = conn.Write([]byte(response))
-		if err != nil {
-			fmt.Println("Error writing:", err.Error())
-		}
-		if err != nil {
-			fmt.Println("Error sending response: ", err.Error())
-		}
+	response := handleCommand(args)
+	fmt.Printf("response is: \n%s\n", response)
+	_, err = conn.Write([]byte(response))
+	if err != nil {
+		fmt.Println("Error writing:", err.Error())
 	}
 }
 
-func handleCommand(s string) string {
-	if s == "PING" {
-		ss := respser.SimpleString{S: "PONG"}
+func handleCommand(args []respser.RespEncoder) string {
+	if len(args) == 0 {
+		ss := respser.SimpleString{S: "OK"}
 		return ss.RespEncode()
+	}
+	fmt.Println("args are:")
+	for _, a := range args {
+		fmt.Println(a.ToString())
+	}
+
+	if len(args) == 0 {
+		return ""
+	}
+
+	if len(args) == 1 {
+		if bs, ok := args[0].(*respser.BulkString); ok {
+			var command string
+
+			if bs.S == nil {
+				return ""
+			} else {
+				command = *bs.S
+			}
+			switch command {
+			case "PING":
+				ss := respser.SimpleString{S: "PONG"}
+				return ss.RespEncode()
+			}
+		}
+
+	}
+	if len(args) == 2 {
+		if bs, ok := args[0].(*respser.BulkString); ok {
+			var command string
+
+			if bs.S == nil {
+				return ""
+			} else {
+				command = *bs.S
+			}
+			switch command {
+			case "ECHO":
+				return args[1].RespEncode()
+			}
+		}
 	}
 	return ""
 }
